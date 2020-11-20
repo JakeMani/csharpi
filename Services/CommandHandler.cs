@@ -6,6 +6,7 @@ using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace csharpi.Services
 {
@@ -16,6 +17,7 @@ namespace csharpi.Services
         private readonly CommandService _commands;
         private readonly DiscordSocketClient _client;
         private readonly IServiceProvider _services;
+        private readonly Microsoft.Extensions.Logging.ILogger _logger;
 
         public CommandHandler(IServiceProvider services)
         {
@@ -24,8 +26,9 @@ namespace csharpi.Services
             _config = services.GetRequiredService<IConfiguration>();
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
+            _logger = services.GetRequiredService<ILogger<CommandHandler>>();
             _services = services;
-            
+
             // take action when we execute a command
             _commands.CommandExecuted += CommandExecutedAsync;
 
@@ -43,12 +46,12 @@ namespace csharpi.Services
         public async Task MessageReceivedAsync(SocketMessage rawMessage)
         {
             // ensures we don't process system/other bot messages
-            if (!(rawMessage is SocketUserMessage message)) 
+            if (!(rawMessage is SocketUserMessage message))
             {
                 return;
             }
-            
-            if (message.Source != MessageSource.User) 
+
+            if (message.Source != MessageSource.User)
             {
                 return;
             }
@@ -60,16 +63,16 @@ namespace csharpi.Services
             char prefix = Char.Parse(_config["Prefix"]);
 
             // determine if the message has a valid prefix, and adjust argPos based on prefix
-            if (!(message.HasMentionPrefix(_client.CurrentUser, ref argPos) || message.HasCharPrefix(prefix, ref argPos))) 
+            if (!(message.HasMentionPrefix(_client.CurrentUser, ref argPos) || message.HasCharPrefix(prefix, ref argPos)))
             {
                 return;
             }
-           
+
             // create a WebSocket-based command context based on the message
             var context = new SocketCommandContext(_client, message);
 
             // execute command if one is found that matches
-            await _commands.ExecuteAsync(context, argPos, _services); 
+            await _commands.ExecuteAsync(context, argPos, _services);
         }
 
         public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
@@ -77,21 +80,20 @@ namespace csharpi.Services
             // if a command isn't found, log that info to console and exit this method
             if (!command.IsSpecified)
             {
-                System.Console.WriteLine($"Command failed to execute for [{context.User.Username}] <-> [{result.ErrorReason}]!");
+                _logger.LogError($"Command failed to execute for [{context.User.Username}] <-> [{result.ErrorReason}]!");
                 return;
             }
-                
+
 
             // log success to the console and exit this method
             if (result.IsSuccess)
             {
-                System.Console.WriteLine($"Command [{command.Value.Name}] executed for -> [{context.User.Username}]");
+                _logger.LogInformation($"Command [{command.Value.Name}] executed for [{context.User.Username}] on [{context.Guild.Name}]");
                 return;
             }
-                
 
             // failure scenario, let's let the user know
             await context.Channel.SendMessageAsync($"Sorry, {context.User.Username}... something went wrong -> [{result}]!");
-        }        
+        }
     }
 }
